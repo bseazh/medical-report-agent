@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="医学报告分析 Agent：将 PDF 报告整理成更易读的摘要与就医准备清单。" />
+    <title>医见 · 医学报告分析 Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="."><span class="brand-mark"><i data-lucide="scan-heart"></i></span><span><strong>医见</strong><small>MEDSIGHT AGENT</small></span></a>
+        <div class="topbar-tools"><div class="topbar-note"><span class="live-dot"></span> 本地浏览器处理 · 不上传文件</div><button class="settings-button" id="settings-button" type="button"><i data-lucide="settings-2"></i> API 配置</button></div>
+      </header>
+
+      <main>
+        <section class="intro">
+          <div class="eyebrow"><span>01</span> REPORT READER</div>
+          <h1>把一份难懂的报告，<br /><em>整理成下一步。</em></h1>
+          <p>上传医学 PDF，医见会提取关键字段、标记需要关注的项目，并生成一份就医沟通准备清单。</p>
+          <div class="intro-meta"><span><i data-lucide="lock-keyhole"></i> 文件仅在本机解析</span><span><i data-lucide="stethoscope"></i> 信息整理，不作诊断</span></div>
+        </section>
+
+        <section class="workspace" aria-label="报告分析工作区">
+          <div class="upload-panel">
+            <div class="panel-kicker">INPUT / PDF</div>
+            <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="上传医学 PDF">
+              <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
+              <div class="upload-icon"><i data-lucide="file-up"></i></div>
+              <h2>拖入报告 PDF</h2>
+              <p>或点击选择文件 · 单个文件最大 20 MB</p>
+              <button class="outline-button" id="choose-button" type="button"><i data-lucide="folder-open"></i> 选择文件</button>
+            </div>
+            <div class="file-row empty" id="file-row"><span class="file-type"><i data-lucide="file-text"></i></span><span class="file-copy"><strong id="file-name">尚未选择文件</strong><small id="file-meta">PDF 文件将在此显示</small></span><button class="icon-button" id="remove-file" type="button" title="移除文件" aria-label="移除文件"><i data-lucide="x"></i></button></div>
+            <button class="analyze-button" id="analyze-button" type="button" disabled><span><i data-lucide="sparkles"></i> 开始分析</span><span class="button-arrow"><i data-lucide="arrow-up-right"></i></span></button>
+            <div class="progress" id="progress" aria-hidden="true"><span></span></div>
+            <p class="status" id="status" role="status">等待上传报告</p>
+          </div>
+
+          <div class="result-panel" id="result-panel">
+            <div class="result-empty" id="result-empty"><span class="empty-number">02</span><i data-lucide="file-search-2"></i><h2>分析结果会出现在这里</h2><p>上传一份报告后，查看摘要、关键字段、异常项目和就医准备。</p></div>
+            <div class="result-content hidden" id="result-content">
+              <div class="result-heading"><div><div class="panel-kicker">OUTPUT / STRUCTURED REPORT</div><h2 id="result-title">报告分析结果</h2></div><div class="result-actions"><button class="small-button" id="download-md" type="button"><i data-lucide="download"></i> Markdown</button><button class="small-button" id="download-json" type="button"><i data-lucide="braces"></i> JSON</button></div></div>
+              <div class="summary-strip"><div class="summary-icon"><i data-lucide="align-left"></i></div><div><span>一页摘要</span><p id="summary">-</p></div></div>
+              <div class="section-title"><span>关键字段</span><small>从报告原文提取</small></div><div class="field-grid" id="field-grid"></div>
+              <div class="section-title"><span>需要关注</span><small id="abnormal-count">0 项</small></div><div class="abnormal-list" id="abnormal-list"></div>
+              <div class="guidance"><div class="guidance-title"><i data-lucide="message-circle-heart"></i><span>就医沟通准备</span></div><ul id="guidance-list"></ul></div>
+              <div class="source-note"><i data-lucide="info"></i><span>本结果由浏览器内的规则化解析生成，仅用于帮助你整理信息，不构成医疗诊断、治疗或用药建议。请携带原始报告咨询专业医生。</span></div>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer><span>医见 / MEDSIGHT</span><span>为下一次与医生的沟通做准备</span></footer>
+    </div>
+    <div class="modal-backdrop" id="settings-modal" aria-hidden="true"><section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title"><div class="modal-header"><div><div class="panel-kicker">SYSTEM / CONNECTION</div><h2 id="settings-title">API 配置</h2></div><button class="icon-button" id="close-settings" type="button" aria-label="关闭"><i data-lucide="x"></i></button></div><p class="settings-lead">密钥仅保存在当前浏览器，并通过本地服务端代理使用，不会写入网页源码。</p><div class="api-card"><div class="api-card-title"><span class="api-logo deepseek">DS</span><div><strong>DeepSeek</strong><small>摘要与医学信息整理</small></div></div><label>API Key<input id="deepseek-key" type="password" autocomplete="off" placeholder="sk-..." /></label><label>API 地址<input id="deepseek-url" type="url" placeholder="https://api.deepseek.com" /></label><div class="connection-row"><button class="small-button test-api" data-service="deepseek" type="button"><i data-lucide="plug-zap"></i> 测试连接</button><span class="connection-status" id="deepseek-status">未测试</span></div></div><div class="api-card"><div class="api-card-title"><span class="api-logo mineru">M</span><div><strong>MinerU</strong><small>PDF 解析与版面识别</small></div></div><label>API Token<input id="mineru-key" type="password" autocomplete="off" placeholder="Bearer Token" /></label><label>API 地址<input id="mineru-url" type="url" placeholder="https://mineru.net/api/v1/file-urls/batch-upload" /></label><div class="connection-row"><button class="small-button test-api" data-service="mineru" type="button"><i data-lucide="plug-zap"></i> 测试连接</button><span class="connection-status" id="mineru-status">未测试</span></div></div><div class="modal-footer"><button class="outline-button" id="cancel-settings" type="button">取消</button><button class="analyze-button save-settings" id="save-settings" type="button"><span><i data-lucide="save"></i> 保存配置</span><span class="button-arrow"><i data-lucide="check"></i></span></button></div></section></div><script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,66 @@
+const $ = (s, root = document) => root.querySelector(s);
+const state = { file: null, text: "", result: null, config: JSON.parse(localStorage.getItem("medsight-api-config") || "{}") };
+const dropzone = $("#dropzone"), input = $("#file-input"), fileRow = $("#file-row"), analyzeButton = $("#analyze-button"), status = $("#status"), progress = $("#progress");
+const setIcons = () => window.lucide?.createIcons();
+
+function setFile(file) {
+  if (!file) return;
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) return showStatus("请选择 PDF 文件", true);
+  if (file.size > 20 * 1024 * 1024) return showStatus("文件超过 20 MB，请压缩后重试", true);
+  state.file = file; fileRow.classList.remove("empty"); $("#file-name").textContent = file.name; $("#file-meta").textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · PDF`;
+  analyzeButton.disabled = false; showStatus("文件已就绪，可以开始分析"); setIcons();
+}
+function showStatus(message, error = false) { status.textContent = message; status.classList.toggle("error", error); }
+function resetFile() { state.file = null; state.text = ""; input.value = ""; fileRow.classList.add("empty"); $("#file-name").textContent = "尚未选择文件"; $("#file-meta").textContent = "PDF 文件将在此显示"; analyzeButton.disabled = true; showStatus("等待上传报告"); }
+async function extractText(file) {
+  const pdfjs = globalThis.pdfjsLib;
+  if (!pdfjs) return "";
+  pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise; let text = "";
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) { const page = await pdf.getPage(pageNo); const content = await page.getTextContent(); text += content.items.map(item => item.str).join(" ") + "\n"; }
+  return text.trim();
+}
+const first = (re, text, fallback = "未识别") => (text.match(re)?.[1] || fallback).trim();
+function analyze(text, file) {
+  const values = []; const pattern = /([\u4e00-\u9fa5A-Za-z（）()]{2,18})\s*[:：]?\s*([<>≤≥]?\s*\d+(?:\.\d+)?)\s*(mg\/L|g\/L|mmol\/L|μmol\/L|U\/L|%|次\/分|mmHg)?\s*(?:参考范围|参考值)?\s*[:：]?\s*([\d.]+\s*[-~至]\s*[\d.]+)/gi;
+  let match; while ((match = pattern.exec(text)) && values.length < 8) values.push({ name: match[1], value: match[2] + (match[3] ? ` ${match[3]}` : ""), ref: match[4] || "报告原文未提供" });
+  const abnormalWords = /(异常|偏高|偏低|阳性|可疑|增厚|结节|炎症|占位|未见|风险|超出|升高|降低)/; const findings = [];
+  const sentences = text.split(/[。.!！\n]/).map(s => s.trim()).filter(Boolean);
+  sentences.filter(s => abnormalWords.test(s)).slice(0, 5).forEach((s, i) => findings.push({ title: i === 0 ? "报告中出现需要关注的描述" : "原文提示", detail: s.slice(0, 150), high: /(阳性|占位|可疑|结节|风险)/.test(s) }));
+  const diagnosis = first(/(?:诊断|检查结论|影像学表现|印象)\s*[:：]?\s*([^\n。]{4,100})/, text);
+  const date = first(/(20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}日?)/, text);
+  const summary = diagnosis !== "未识别" ? `报告主要结论为“${diagnosis}”。系统整理出 ${values.length || "若干"} 个可读字段${findings.length ? `，其中 ${findings.length} 处文字需要和医生进一步确认` : "，未在文本中发现明显的风险关键词"}。` : `已读取《${file.name}》并完成初步整理。报告中包含 ${values.length || "若干"} 个可识别字段，建议结合原始影像和医生解读确认结论。`;
+  const fields = [{ label: "报告文件", value: file.name }, { label: "检查日期", value: date }, { label: "诊断 / 结论", value: diagnosis }, { label: "识别页数", value: "浏览器内解析" }, { label: "指标字段", value: `${values.length} 项` }, { label: "文本长度", value: `${text.length} 字` }];
+  const guidance = ["预约相关专科，携带原始 PDF 和既往检查结果。", "向医生确认每个异常描述的临床意义、是否需要复查及复查时间。", "如果出现持续胸痛、呼吸困难、意识改变等急症症状，请直接联系急救服务。"];
+  return { file: file.name, summary, fields, values, findings, guidance, analyzedAt: new Date().toISOString() };
+}
+function render(result) {
+  state.result = result; $("#result-empty").classList.add("hidden"); $("#result-content").classList.remove("hidden"); $("#result-title").textContent = result.file.replace(/\.pdf$/i, "") + " · 分析结果"; $("#summary").textContent = result.summary;
+  $("#field-grid").innerHTML = result.fields.map(f => `<div class="field"><label>${f.label}</label><strong>${escapeHtml(f.value)}</strong></div>`).join("");
+  $("#abnormal-count").textContent = `${result.findings.length} 项`;
+  $("#abnormal-list").innerHTML = result.findings.length ? result.findings.map(f => `<div class="abnormal ${f.high ? "high" : ""}"><i data-lucide="${f.high ? "alert-triangle" : "circle-alert"}"></i><div><strong>${f.title}</strong><p>${escapeHtml(f.detail)}</p></div></div>`).join("") : `<div class="abnormal"><i data-lucide="circle-check"></i><div><strong>未发现明显异常关键词</strong><p>这不代表报告完全正常，请以医生的正式解读为准。</p></div></div>`;
+  $("#guidance-list").innerHTML = result.guidance.map(item => `<li>${escapeHtml(item)}</li>`).join(""); setIcons();
+}
+async function enhanceWithAgents(result) {
+  const payload = { fileName: state.file.name, text: state.text, pdfBase64: await toBase64(state.file), config: state.config };
+  const response = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (!response.ok) throw new Error((await response.json()).error || "服务端分析失败");
+  const data = await response.json();
+  if (data.text && data.text !== state.text) { state.text = data.text; result = analyze(state.text, state.file); }
+  if (data.ai) { result.summary = data.ai.summary || result.summary; result.findings = Array.isArray(data.ai.findings) ? data.ai.findings : result.findings; result.guidance = Array.isArray(data.ai.guidance) ? data.ai.guidance : result.guidance; result.agentMeta = data.meta; }
+  return result;
+}
+function toBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(",")[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
+function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c])); }
+function download(type) { if (!state.result) return; const r = state.result; let body, name, mime; if (type === "json") { body = JSON.stringify(r, null, 2); name = "medical-report-analysis.json"; mime = "application/json"; } else { body = `# ${r.file} · 医学报告分析\n\n## 一页摘要\n${r.summary}\n\n## 关键字段\n${r.fields.map(f => `- ${f.label}：${f.value}`).join("\n")}\n\n## 需要关注\n${r.findings.length ? r.findings.map(f => `- ${f.title}：${f.detail}`).join("\n") : "- 未发现明显异常关键词"}\n\n## 就医沟通准备\n${r.guidance.map(g => `- ${g}`).join("\n")}\n\n> 本结果仅用于信息整理，不构成医疗诊断。`; name = "medical-report-analysis.md"; mime = "text/markdown"; } const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type: mime })); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
+
+dropzone.addEventListener("click", () => input.click()); $("#choose-button").addEventListener("click", e => { e.stopPropagation(); input.click(); }); input.addEventListener("change", e => setFile(e.target.files[0])); ["dragenter", "dragover"].forEach(type => dropzone.addEventListener(type, e => { e.preventDefault(); dropzone.classList.add("dragover"); })); ["dragleave", "drop"].forEach(type => dropzone.addEventListener(type, e => { e.preventDefault(); dropzone.classList.remove("dragover"); })); dropzone.addEventListener("drop", e => setFile(e.dataTransfer.files[0])); $("#remove-file").addEventListener("click", resetFile);
+analyzeButton.addEventListener("click", async () => { if (!state.file) return; analyzeButton.disabled = true; progress.classList.add("active"); showStatus("正在读取 PDF 文本…"); try { state.text = await extractText(state.file); let result = analyze(state.text, state.file); showStatus("正在调用 MinerU 与 DeepSeek…"); try { result = await enhanceWithAgents(result); } catch (agentError) { console.warn(agentError); showStatus("云端 Agent 暂不可用，已展示本地解析结果"); } render(result); if (!status.classList.contains("error")) showStatus("分析完成 · 结果仅保留在当前页面"); } catch (error) { console.error(error); showStatus("解析失败，请确认文件未加密且为有效 PDF", true); } finally { progress.classList.remove("active"); analyzeButton.disabled = !state.file; } });
+$("#download-md").addEventListener("click", () => download("md")); $("#download-json").addEventListener("click", () => download("json")); setIcons();
+const settingsModal = $("#settings-modal");
+function openSettings() { const c = state.config; $("#deepseek-key").value = c.deepseek?.key || ""; $("#deepseek-url").value = c.deepseek?.url || "https://api.deepseek.com"; $("#mineru-key").value = c.mineru?.token || ""; $("#mineru-url").value = c.mineru?.url || "https://mineru.net/api/v1/file-urls/batch-upload"; settingsModal.classList.add("open"); settingsModal.setAttribute("aria-hidden", "false"); }
+function closeSettings() { settingsModal.classList.remove("open"); settingsModal.setAttribute("aria-hidden", "true"); }
+function readConfig() { return { deepseek: { key: $("#deepseek-key").value.trim(), url: $("#deepseek-url").value.trim() || "https://api.deepseek.com" }, mineru: { token: $("#mineru-key").value.trim(), url: $("#mineru-url").value.trim() || "https://mineru.net/api/v1/file-urls/batch-upload" } }; }
+$("#settings-button").addEventListener("click", openSettings); $("#close-settings").addEventListener("click", closeSettings); $("#cancel-settings").addEventListener("click", closeSettings);
+$("#save-settings").addEventListener("click", () => { state.config = readConfig(); localStorage.setItem("medsight-api-config", JSON.stringify(state.config)); closeSettings(); showStatus("API 配置已保存"); });
+document.querySelectorAll(".test-api").forEach(button => button.addEventListener("click", async () => { const service = button.dataset.service; const cfg = readConfig()[service]; const output = $("#" + service + "-status"); output.textContent = "测试中…"; output.className = "connection-status pending"; button.disabled = true; try { const r = await fetch("/api/test-connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service, config: cfg }) }); const data = await r.json(); if (!r.ok) throw new Error(data.error); output.textContent = data.message || "连接成功"; output.className = "connection-status success"; } catch (error) { output.textContent = error.message || "连接失败"; output.className = "connection-status error"; } finally { button.disabled = false; } }));
