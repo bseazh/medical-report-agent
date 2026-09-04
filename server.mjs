@@ -1,5 +1,5 @@
 import http from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +7,11 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 const port = Number(process.env.PORT || 4173);
 const mineruToken = process.env.MINERU_API_TOKEN || "";
 const deepseekKey = process.env.DEEPSEEK_API_KEY || "";
+const dataRoot = process.env.DATA_ROOT || join(root, "data", "projects");
+const safe = (s) => String(s).replace(/[^\w\u4e00-\u9fff.-]+/g, "_").slice(0, 80);
+async function projectDir(id){ const d=join(dataRoot,safe(id)); await mkdir(join(d,"source","screenshots"),{recursive:true}); await mkdir(join(d,"source","pdfs"),{recursive:true}); await mkdir(join(d,"parsed"),{recursive:true}); return d; }
+async function logAction(id, action, detail={}){ const d=await projectDir(id), f=join(d,"audit-log.jsonl"); await writeFile(f, JSON.stringify({at:new Date().toISOString(),action,detail})+"\n",{flag:"a"}); }
+async function listProjects(){ await mkdir(dataRoot,{recursive:true}); const out=[]; for(const id of await readdir(dataRoot)){try{const d=await projectDir(id),p=JSON.parse(await readFile(join(d,"project.json")));out.push(p)}catch{}} return out.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)); }
 
 async function jsonBody(req) {
   let raw = "";
@@ -45,6 +50,10 @@ async function callDeepSeek(text, fileName, config = {}) {
 function send(res, status, body) { res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }); res.end(JSON.stringify(body)); }
 async function handler(req, res) {
   if (req.method === "OPTIONS") return send(res, 204, {});
+  if (req.method === "GET" && req.url === "/api/projects") return send(res,200,{projects:await listProjects()});
+  if (req.method === "POST" && req.url === "/api/projects") { const b=await jsonBody(req), now=new Date().toISOString(), id=`project-${Date.now()}`, p={id,name:String(b.name||"未命名项目"),patientName:"",status:"未开始",createdAt:now,updatedAt:now,files:[]}; const d=await projectDir(id); await writeFile(join(d,"project.json"),JSON.stringify(p,null,2)); await logAction(id,"project.create",{name:p.name}); return send(res,201,p); }
+  const pm=req.url.match(/^\/api\/projects\/([^/]+)$/); if(pm && req.method==="DELETE"){const id=pm[1]; await rm(join(dataRoot,safe(id)),{recursive:true,force:true}); return send(res,200,{ok:true});}
+  const pu=req.url.match(/^\/api\/projects\/([^/]+)\/upload$/); if(pu && req.method==="POST"){const id=pu[1],b=await jsonBody(req),d=await projectDir(id),name=safe(b.name||"file"),kind=String(b.kind||"").toLowerCase(),dir=kind==="pdf"||name.toLowerCase().endsWith(".pdf")?"pdfs":"screenshots"; await writeFile(join(d,"source",dir,name),Buffer.from(String(b.base64||""),"base64")); const p=JSON.parse(await readFile(join(d,"project.json"))); p.files=[...(p.files||[]),{name,kind:dir,status:"已上传",uploadedAt:new Date().toISOString()}];p.updatedAt=new Date().toISOString();await writeFile(join(d,"project.json"),JSON.stringify(p,null,2));await logAction(id,"file.upload",{name,kind:dir});return send(res,201,{ok:true,file:p.files.at(-1)});}
   if (req.method === "POST" && req.url === "/api/analyze") {
     try {
       const body = await jsonBody(req); const localText = String(body.text || ""); const fileName = String(body.fileName || "report.pdf"); const config = body.config || {};
@@ -54,6 +63,7 @@ async function handler(req, res) {
       const sourceText = mineru.text || localText;
       let ai = null; let aiError = "";
       try { ai = await callDeepSeek(sourceText, fileName, config.deepseek); } catch (error) { aiError = error.message; }
+      if(body.projectId){const d=await projectDir(body.projectId);await writeFile(join(d,"parsed",`${safe(fileName)}.json`),JSON.stringify({fileName,text:sourceText,ai,meta:{mineru:!mineru.skipped&&!mineruError,mineruError,deepseek:Boolean(ai),deepseekError:aiError}},null,2));await logAction(body.projectId,"analysis.saved",{fileName});}
       return send(res, 200, { text: sourceText, ai, meta: { mineru: !mineru.skipped && !mineruError, mineruError, deepseek: Boolean(ai), deepseekError: aiError } });
     } catch (error) { return send(res, 400, { error: error.message || "分析请求失败" }); }
   }
