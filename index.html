@@ -31,10 +31,10 @@
           <div class="upload-panel">
             <div class="panel-kicker">INPUT / PDF</div>
             <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="上传医学 PDF">
-              <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
+              <input id="file-input" type="file" accept="application/pdf,.pdf,image/png,image/jpeg" multiple hidden />
               <div class="upload-icon"><i data-lucide="file-up"></i></div>
-              <h2>拖入报告 PDF</h2>
-              <p>或点击选择文件 · 单个文件最大 20 MB</p>
+              <h2>拖入病例截图或 PDF</h2>
+              <p>支持批量选择 · 单个文件最大 20 MB</p>
               <button class="outline-button" id="choose-button" type="button"><i data-lucide="folder-open"></i> 选择文件</button>
             </div>
             <div class="file-row empty" id="file-row"><span class="file-type"><i data-lucide="file-text"></i></span><span class="file-copy"><strong id="file-name">尚未选择文件</strong><small id="file-meta">PDF 文件将在此显示</small></span><button class="icon-button" id="remove-file" type="button" title="移除文件" aria-label="移除文件"><i data-lucide="x"></i></button></div>
