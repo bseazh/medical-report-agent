@@ -2,6 +2,9 @@ import http from "node:http";
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const execFileAsync = promisify(execFile);
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const port = Number(process.env.PORT || 4173);
@@ -21,13 +24,21 @@ async function jsonBody(req) {
 
 async function callMinerU(pdfBase64, fileName, config = {}) {
   const token = config.token || mineruToken; if (!token || !pdfBase64) return { text: "", skipped: true };
-  const endpoint = config.url || process.env.MINERU_API_URL || "https://mineru.net/api/v1/file-urls/batch-upload";
-  const form = new FormData();
-  form.append("files", new Blob([Buffer.from(pdfBase64, "base64")], { type: "application/pdf" }), fileName || "report.pdf");
-  const response = await fetch(endpoint, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
-  if (!response.ok) throw new Error(`MinerU 返回 ${response.status}`);
-  const payload = await response.json();
-  return { text: payload?.data?.text || payload?.data?.markdown || payload?.text || "", payload };
+  const base = (config.baseUrl || process.env.MINERU_API_BASE_URL || "https://mineru.net/api/v1").replace(/\/$/, "");
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const create = await fetch(`${base}/file-urls/batch-upload`, { method: "POST", headers, body: JSON.stringify({ files: [{ name: fileName || "report.pdf", is_ocr: false }] }) });
+  if (!create.ok) throw new Error(`MinerU task create ${create.status}`);
+  const created = await create.json(); const data = created.data || created; const batchId = data.batch_id || data.batchId || data.id;
+  const urls = data.file_urls || data.fileUrls || []; const uploadUrl = Array.isArray(urls) ? urls[0] : urls[fileName] || Object.values(urls)[0];
+  if (!batchId || !uploadUrl) throw new Error("MinerU response missing batch_id or upload URL");
+  const upload = await fetch(uploadUrl, { method: "PUT", body: Buffer.from(pdfBase64, "base64") }); if (!upload.ok) throw new Error(`MinerU file upload ${upload.status}`);
+  let result = null; const timeout = Date.now() + Number(config.timeoutMs || process.env.MINERU_TIMEOUT_MS || 180000);
+  while (Date.now() < timeout) { const poll = await fetch(`${base}/file-urls/batch-upload?batch_id=${encodeURIComponent(batchId)}`, { headers: { Authorization: `Bearer ${token}` } }); if (!poll.ok) throw new Error(`MinerU task status ${poll.status}`); const payload = await poll.json(); const rows = payload.data?.extract_result || payload.data?.results || payload.data || []; const row = Array.isArray(rows) ? (rows[0] || {}) : (rows[fileName] || Object.values(rows)[0] || {}); const state = String(row.state || row.status || payload.data?.status || "").toLowerCase(); if (["done","success","completed","succeeded"].includes(state) || row.full_zip_url || row.fullZipUrl || row.download_url) { result = { ...payload, row }; break; } if (["failed","error"].includes(state)) throw new Error(`MinerU task failed: ${row.err_msg || row.error || state}`); await new Promise(r => setTimeout(r, 3000)); }
+  if (!result) throw new Error("MinerU task timeout");
+  const zipUrl = result.row.full_zip_url || result.row.fullZipUrl || result.row.download_url || result.row.url; if (!zipUrl) return { text: result.row.markdown || result.row.text || "", pages: [], payload: result };
+  const zipPath = join(dataRoot, `.mineru-${Date.now()}.zip`); const zip = await fetch(zipUrl); if (!zip.ok) throw new Error(`MinerU result download ${zip.status}`); await writeFile(zipPath, Buffer.from(await zip.arrayBuffer())); const outDir = `${zipPath}.dir`; await mkdir(outDir, { recursive: true }); await execFileAsync("unzip", ["-oq", zipPath, "-d", outDir]);
+  const { stdout: files } = await execFileAsync("find", [outDir, "-type", "f"]); const pageFiles = files.split("\n").filter(x => /\.md$|\.json$/i.test(x)).sort(); const pages = []; for (const file of pageFiles) { const text = await readFile(file, "utf8"); pages.push({ file: file.replace(`${outDir}/`, ""), text, page: pages.length + 1 }); }
+  await rm(zipPath, { force: true }); await rm(outDir, { recursive: true, force: true }); return { text: pages.map(x => `\n[Page ${x.page}]\n${x.text}`).join("\n"), pages, payload: result };
 }
 
 async function callDeepSeek(text, fileName, config = {}) {
@@ -71,7 +82,7 @@ async function handler(req, res) {
       const sourceText = mineru.text || localText;
       let ai = null; let aiError = "";
       try { ai = await callDeepSeek(sourceText, fileName, config.deepseek); } catch (error) { aiError = error.message; }
-      if(body.projectId){const d=await projectDir(body.projectId);await writeFile(join(d,"parsed",`${safe(fileName)}.json`),JSON.stringify({fileName,text:sourceText,ai,meta:{mineru:!mineru.skipped&&!mineruError,mineruError,deepseek:Boolean(ai),deepseekError:aiError}},null,2));await logAction(body.projectId,"analysis.saved",{fileName});}
+      if(body.projectId){const d=await projectDir(body.projectId);await writeFile(join(d,"parsed",`${safe(fileName)}.json`),JSON.stringify({fileName,text:sourceText,pages:mineru.pages||[],ai,meta:{mineru:!mineru.skipped&&!mineruError,mineruError,deepseek:Boolean(ai),deepseekError:aiError}},null,2));await logAction(body.projectId,"analysis.saved",{fileName});}
       return send(res, 200, { text: sourceText, ai, meta: { mineru: !mineru.skipped && !mineruError, mineruError, deepseek: Boolean(ai), deepseekError: aiError } });
     } catch (error) { return send(res, 400, { error: error.message || "分析请求失败" }); }
   }
