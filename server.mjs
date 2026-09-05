@@ -24,7 +24,8 @@ async function jsonBody(req) {
 
 async function callMinerU(pdfBase64, fileName, config = {}) {
   const token = config.token || mineruToken; if (!token || !pdfBase64) return { text: "", skipped: true };
-  const base = (config.baseUrl || process.env.MINERU_API_BASE_URL || "https://mineru.net/api/v1").replace(/\/$/, "");
+  const configuredBase = config.baseUrl || config.url?.replace(/\/file-urls\/batch-upload\/?$/, "") || process.env.MINERU_API_BASE_URL || "https://mineru.net/api/v1";
+  const base = configuredBase.replace(/\/$/, "");
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const create = await fetch(`${base}/file-urls/batch-upload`, { method: "POST", headers, body: JSON.stringify({ files: [{ name: fileName || "report.pdf", is_ocr: false }] }) });
   if (!create.ok) throw new Error(`MinerU task create ${create.status}`);
