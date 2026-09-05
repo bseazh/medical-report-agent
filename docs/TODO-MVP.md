@@ -109,8 +109,9 @@ data/projects/<project-id>/
 
 ### 3. PDF MinerU 解析
 
-- [ ] 对每个 PDF 创建解析任务
+- [x] 对每个 PDF 创建解析任务
 - [x] 调用 MinerU API（异步任务协议）
+- [x] MinerU v4 官方云 API 真实样例验证通过
 - [x] 保存 MinerU 原始响应
 - [x] 保存 Markdown/JSON 解析结果
 - [x] 保留页码信息（结果包分页结构）
