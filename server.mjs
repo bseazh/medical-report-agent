@@ -23,7 +23,7 @@ async function listProjects(){ await mkdir(dataRoot,{recursive:true}); const out
 
 async function jsonBody(req) {
   let raw = "";
-  for await (const chunk of req) { raw += chunk; if (raw.length > 28 * 1024 * 1024) throw new Error("请求超过 28 MB"); }
+  for await (const chunk of req) { raw += chunk; if (raw.length > 28 * 1024 * 1024) throw new Error("请求超过 28 MB"); if (raw.length > MAX_UPLOAD_BYTES * 1.4 + 1024 * 1024) throw new Error(`上传请求超过 ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB 文件限制`); }
   return JSON.parse(raw);
 }
 async function validatePdfFile(filePath){
