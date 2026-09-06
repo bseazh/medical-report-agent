@@ -15,6 +15,7 @@ const port = Number(process.env.PORT || 4173);
 const mineruToken = process.env.MINERU_API_TOKEN || "";
 const deepseekKey = process.env.DEEPSEEK_API_KEY || "";
 const dataRoot = process.env.DATA_ROOT || join(root, "data", "projects");
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 20 * 1024 * 1024);
 const safe = (s) => String(s).replace(/[^\w\u4e00-\u9fff.-]+/g, "_").slice(0, 80);
 async function projectDir(id){ const d=join(dataRoot,safe(id)); await mkdir(join(d,"source","screenshots"),{recursive:true}); await mkdir(join(d,"source","pdfs"),{recursive:true}); await mkdir(join(d,"parsed"),{recursive:true}); return d; }
 async function logAction(id, action, detail={}){ const d=await projectDir(id), f=join(d,"audit-log.jsonl"); await writeFile(f, JSON.stringify({at:new Date().toISOString(),action,detail})+"\n",{flag:"a"}); }
@@ -24,6 +25,11 @@ async function jsonBody(req) {
   let raw = "";
   for await (const chunk of req) { raw += chunk; if (raw.length > 28 * 1024 * 1024) throw new Error("请求超过 28 MB"); }
   return JSON.parse(raw);
+}
+async function validatePdfFile(filePath){
+  const {stdout}=await execFileAsync("pdfinfo",[filePath]);
+  if(/Encrypted:\s+yes/i.test(stdout)) throw new Error("加密 PDF 暂不支持，请上传未加密文件");
+  if(!/Pages:\s+\d+/i.test(stdout)) throw new Error("PDF 文件无法读取页数");
 }
 
 async function callMinerU(pdfBase64, fileName, config = {}) {
@@ -64,7 +70,8 @@ async function callDeepSeek(text, fileName, config = {}) {
 }
 async function callVision(imageBase64, fileName, config = {}) { const key=config.key||deepseekKey;if(!key)return null;const base=(config.url||process.env.DEEPSEEK_API_URL||"https://api.deepseek.com").replace(/\/$/,"");const model=config.model||process.env.DEEPSEEK_VISION_MODEL||"deepseek-v4-flash-vision-exp";const r=await fetch(`${base}/chat/completions`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${key}`},body:JSON.stringify({model,temperature:0,response_format:{type:"json_object"},messages:[{role:"system",content:"Extract only visible facts from this clinic screenshot. Return strict JSON with patient, history, symptoms, allergies, medications, visits, diagnosis, timeline. Missing or uncertain values must be null and reviewStatus must be 待人工确认. Never guess."},{role:"user",content:[{type:"text",text:`File: ${fileName}`},{type:"image_url",image_url:{url:`data:image/png;base64,${imageBase64}`}}]}]})});if(!r.ok)throw new Error(`Vision model ${r.status}`);const j=await r.json();return {model,raw:j,structured:JSON.parse(j.choices?.[0]?.message?.content||"{}")}; }
 function parseReportType(name,text){const s=`${name} ${text}`;if(/肠道菌群|宏基因组/.test(s))return"gut-microbiome";if(/食物不耐受|food.?intolerance/i.test(s))return"food-intolerance";if(/营养与毒性元素|头发/.test(s))return"nutrient-toxic-elements";if(/肠道功能健康评估|GI Function/.test(s))return"gi-function";return"unknown"}
-function extractStructuredIndicators(pages,fileName,type){const out=[];for(const pg of pages||[]){for(const line of String(pg.text||"").split(/\n|。/).map(x=>x.trim()).filter(Boolean)){const m=line.match(/([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9（）()\-]{1,30})\s*[:：]?\s*([<>≤≥]?\s*\d+(?:\.\d+)?)\s*([A-Za-zμ%/]+)?(?:\s*(?:参考值|参考范围)\s*[:：]?\s*([<>]?\s*\d+(?:\.\d+)?(?:\s*[-~至]\s*\d+(?:\.\d+)?|\s*[A-Za-zμ%/]+)?))?/);if(!m)continue;out.push({name:m[1],value:m[2],unit:m[3]||null,reference:m[4]||null,status:/(偏高|偏低|异常|升高|降低|超标|阳性|↑|↓)/.test(line)?"异常":"待确认",reviewStatus:"待审核",reportType:type,raw:line.slice(0,300),source:{file:fileName,page:pg.page}});if(out.length>=500) return out;}}return out}
+function extractStructuredIndicators(pages,fileName,type){const out=[];for(const pg of pages||[]){for(const line of String(pg.text||"").split(/\n|。/).map(x=>x.trim()).filter(Boolean)){const m=line.match(/([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9（）()\-]{1,30})\s*[:：]?\s*([<>≤≥]?\s*\d+(?:\.\d+)?)\s*([A-Za-zμ%/]+)?(?:\s*(?:参考值|参考范围)\s*[:：]?\s*([<>]?\s*\d+(?:\.\d+)?(?:\s*[-~至]\s*\d+(?:\.\d+)?|\s*[A-Za-zμ%/]+)?))?/);if(!m)continue;const abnormal=/(偏高|偏低|异常|升高|降低|超标|阳性|↑|↓|重度|中度|轻度)/.test(line);const level=/(显著异常|重度|中度|轻度)/.exec(line)?.[1]||null;out.push({name:m[1],value:m[2],unit:m[3]||null,reference:m[4]||null,status:abnormal?"异常":"正常",severity:level|| (abnormal?"异常":"正常"),reviewStatus:"待审核",reportType:type,raw:line.slice(0,300),source:{file:fileName,page:pg.page}});if(out.length>=500) return out;}}return out}
+function extractKeyConclusions(pages,type){const lines=(pages||[]).flatMap(pg=>String(pg.text||'').split(/\n|。/).map(x=>({text:x.trim(),page:pg.page}))).filter(x=>x.text&&/(结论|结 果|提示|评估|印象|建议|阳性|异常|风险)/.test(x.text));return lines.slice(0,20).map(x=>({text:x.text.slice(0,500),source:{page:x.page},reportType:type}));}
 
 function classifyIndicators(items){const noise=/^(采检日期|检测日期|报告日期|年龄|性别|姓名|电话|编号|页码|说明|备注|单位|参考|项目)$/;const filtered=items.filter(item=>item.name.length>1&&!noise.test(item.name)&&!/^20\d{2}$/.test(item.value));const groups=new Map();for(const item of filtered){const key=item.name.replace(/[（）()\s]/g,"").toLowerCase();const group=groups.get(key)||[];group.push(item);groups.set(key,group)}return filtered.map(item=>{const key=item.name.replace(/[（）()\s]/g,"").toLowerCase(),group=groups.get(key)||[],values=new Set(group.map(x=>`${x.value}|${x.unit||""}`));return {...item,duplicate:group.length>1,conflict:values.size>1,severity:item.status==="异常"?"异常":"未见明显异常"}})}
 function suggestionBasis(indicator){return {name:indicator.name,value:indicator.value,unit:indicator.unit||null,reference:indicator.reference||null,source:indicator.source||{}}}
@@ -106,6 +113,7 @@ async function generateProjectPpt(projectId){
 }
 async function handler(req, res) {
   if (req.method === "OPTIONS") return send(res, 204, {});
+  if (req.method === "GET" && req.url === "/api/health") return send(res,200,{ok:true,service:"medical-report-agent",uptime:process.uptime(),mineruConfigured:Boolean(mineruToken),deepseekConfigured:Boolean(deepseekKey),maxUploadBytes:MAX_UPLOAD_BYTES});
   if (req.method === "GET" && req.url === "/api/projects") return send(res,200,{projects:await listProjects()});
   if (req.method === "POST" && req.url === "/api/projects") { const b=await jsonBody(req), now=new Date().toISOString(), id=`project-${Date.now()}`, p={id,name:String(b.name||"未命名项目"),patientName:"",status:"未开始",createdAt:now,updatedAt:now,files:[]}; const d=await projectDir(id); await writeFile(join(d,"project.json"),JSON.stringify(p,null,2)); await logAction(id,"project.create",{name:p.name}); return send(res,201,p); }
   const pm=req.url.match(/^\/api\/projects\/([^/]+)$/); if(pm && req.method==="DELETE"){const id=pm[1]; await rm(join(dataRoot,safe(id)),{recursive:true,force:true}); return send(res,200,{ok:true});}
