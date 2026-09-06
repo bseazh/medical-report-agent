@@ -115,3 +115,4 @@ $("#generate-suggestions")?.addEventListener('click',generateSuggestions);
 $("#save-suggestions")?.addEventListener('click',()=>saveSuggestions(false));
 $("#confirm-suggestions")?.addEventListener('click',()=>saveSuggestions(true));
 $("#confirm-all-suggestions")?.addEventListener('click',()=>{document.querySelectorAll('[data-suggestion-check]').forEach(x=>x.checked=true);showStatus('已选中全部建议，请保存审核');});
+document.addEventListener("click",event=>{const source=event.target.closest(".indicator-source"),card=event.target.closest(".indicator-card");if(source&&card&&state.activeProjectId){const file=card.dataset.file,page=card.dataset.page||1;window.open(`/api/projects/${encodeURIComponent(state.activeProjectId)}/files/${encodeURIComponent(file)}/raw#page=${page}`,"_blank","noopener")}});
