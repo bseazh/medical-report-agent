@@ -14,6 +14,7 @@ try {
  const suggestions=[{title:'test',content:'test',type:'饮食',category:'可选建议',reviewStatus:'已确认'}];
  await api(path+'/indicators','PUT',{indicators});
  await api(path+'/suggestions','PUT',{suggestions});
+ const ed=(await api(path+'/evidence','POST',{})).data;ed.evidence.forEach(x=>x.reviewStatus='已确认');await api(path+'/evidence','PUT',{evidence:ed.evidence});
  for(const route of ['/synthesis','/matrix']){
   const dims=(await api(path+route)).data.dimensions;
   for(const [name,status] of [['同化代谢','未见明显异常'],['防御与修护','需关注'],['能量生成','待补充判断'],['压力','无相关数据']])assert.equal(dims.find(x=>x.name===name).assessmentStatus,status);
