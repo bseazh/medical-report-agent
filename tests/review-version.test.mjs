@@ -29,6 +29,6 @@ try {
  }
  await confirm();assert.equal((await api(path+'/ppt-template')).data.ready,true);
  await api(path+'/suggestions','POST',{});assert.equal((await api(path+'/synthesis')).data.reviewStatus,'待审核');
- const html=await readFile('index.html','utf8');assert.equal(html.split('id="generate-deepseek-suggestions"').length-1,1);assert.ok(html.includes('id="synthesis-suggestions"'));
+ const html=await readFile('index.html','utf8');assert.equal(html.split('id="generate-deepseek-suggestions"').length-1,1);assert.ok(html.includes('id="generate-suggestions-page"'));assert.ok(html.includes('data-step="6"'));
  console.log('PASS: case/indicator/advice invalidation; stale confirmation and export blocked; all four dimension states; unique buttons');
 } finally {child.kill();await new Promise(resolve=>child.once('exit',resolve));await rm(dir,{recursive:true,force:true});}
