@@ -307,6 +307,8 @@ data/projects/<project-id>/
 - [x] 导出结构化 JSON
 - [x] 导出来源目录
 - [x] 保存历次导出文件
+- [x] LibreOffice 转换 PPTX 为项目内 PDF 预览
+- [x] 网页弹窗预览已生成 PDF
 - [x] 记录上传、解析、修改、审核和导出操作
 - [x] 日志不记录 API Key（写入日志前统一脱敏）
 - [x] 支持删除项目及其数据
@@ -381,3 +383,11 @@ data/projects/<project-id>/
 - [x] 回归测试：`node tests/review-version.test.mjs`。
 
 说明：历史确认未绑定版本时需重新确认；本轮未安装 LibreOffice，也未完成参考 PPT 视觉复刻。
+
+
+## 2026-09-07：PPT 网页预览
+
+- Ubuntu 服务器已安装 LibreOffice 24.2.7.2。
+- PPTX 导出后自动转换为同名 PDF，保存于项目 `exports/`。
+- 第 5 步历史导出列表提供 PDF 预览和 PPTX 下载。
+- 若服务器缺少 LibreOffice，仍可下载可编辑 PPTX，但预览状态会显示未生成。
