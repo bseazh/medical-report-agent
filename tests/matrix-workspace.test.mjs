@@ -12,6 +12,7 @@ try {
  let d=await api(base+"/matrix-workspace");assert.equal(d.status,200);assert.equal(d.data.workspace.sections.length,9);assert.equal(d.data.workspace.status,"待审核");
  const section={...d.data.workspace.sections[0],reviewStatus:"已确认",interpretation:"人工核对后的故事摘要",questions:d.data.workspace.sections[0].questions.map((q,i)=>i===0?{...q,answer:"反复鼻部症状",sourceType:"manual"}:q)};
  d=await api(base+"/matrix-workspace/sections/story","PUT",{section});assert.equal(d.status,200);assert.equal(d.data.workspace.sections[0].reviewStatus,"已确认");assert.equal(d.data.workspace.status,"待审核");
- d=await api(base+"/matrix-workspace/export");assert.equal(d.status,200);assert.equal(d.data.workspace.sections[0].questions[0].answer,"反复鼻部症状");
+ d=await api(base+"/matrix-workspace/export");assert.equal(d.status,200);
+ const image=await fetch("http://localhost:4191"+base+"/matrix-workspace/export-png");assert.equal(image.status,200);assert.equal(image.headers.get("content-type"),"image/png");assert.equal(Buffer.from(await image.arrayBuffer()).subarray(0,8).toString("hex"),"89504e470d0a1a0a");assert.equal(d.data.workspace.sections[0].questions[0].answer,"反复鼻部症状");
  console.log("PASS: matrix workspace initialization; section review/save; independent export");
 } finally {child.kill();await new Promise(resolve=>child.once("exit",resolve));await rm(dir,{recursive:true,force:true})}
