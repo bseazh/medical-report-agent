@@ -30,7 +30,10 @@ function sourcesText(sources = []) {
 export function buildReportPages(project, evidence = []) {
   const name = project.caseData?.patient?.name || project.patientName || "患者";
   const indicators = (project.indicators || []).filter(item => item.reviewStatus === "已确认");
-  const suggestions = (project.suggestions?.suggestions || []).filter(item => item.reviewStatus === "已确认");
+  const approved = project.approvedPlan?.modules || [];
+  const moduleSuggestions = approved.flatMap(module => (module.suggestions || []).filter(item => item.reviewStatus === "已确认").map(item => ({...item, module: module.moduleTitle || module.title})));
+  const approvedSuggestions = project.approvedPlan?.suggestions || [];
+  const suggestions = (approvedSuggestions.length ? approvedSuggestions : (moduleSuggestions.length ? moduleSuggestions : (project.suggestions?.suggestions || []))).filter(item => item.reviewStatus === "已确认");
   const pages = [{ kind: "cover", title: "过敏健康改善指导方案", subtitle: name, blocks: [] }];
   function section(title, records) {
     if (!records.length) return;

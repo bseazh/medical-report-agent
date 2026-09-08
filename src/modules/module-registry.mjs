@@ -1,0 +1,19 @@
+import { moduleOutputSchema } from "../schemas/case-schema.mjs";
+const commonRules = ["只使用 reviewStatus=已确认 的资料。", "区分检测结果、患者自述、医生诊断和模型解释。", "资料不足返回 missing_data，不得猜测。", "不得生成未经医生确认的诊断、药物或补充剂剂量。", "每条结论和行动保留文件名与页码或截图字段。"];
+
+const legacyRules = {
+  "diet-avoidance": { type: "饮食", when: "食物不耐受、过敏或敏感相关指标已确认", template: "根据已确认的食物相关结果整理回避清单；回避等级、周期和重新引入必须由专业人员审核，不自动扩大忌口范围。" },
+  "food-substitution": { type: "饮食", when: "存在需回避食物", template: "从未被标记为不耐受或过敏的食材中选择营养结构相近的替代品，并核对配料表和隐含来源。" },
+  "meal-plan": { type: "饮食", when: "存在饮食相关指标或肠道相关指标", template: "按年龄、体重、活动量和已确认耐受范围安排规律饮食；成人与儿童使用不同份量模板。" },
+  "exercise": { type: "运动", when: "存在已确认异常指标", template: "从可耐受的低至中等强度活动开始，记录运动后的症状和恢复情况；出现不适时停止并咨询专业人员。" },
+  "hydration": { type: "饮水", when: "存在已确认异常指标", template: "分散到全天饮水，根据年龄、体重、天气、活动量和专业人员意见调整；存在饮水限制时以专业意见为准。" },
+  "sleep-stress": { type: "减压", when: "存在肠道、过敏、睡眠或压力相关指标", template: "建立规律作息和每日可执行的放松安排，记录睡眠、压力和症状变化；儿童建议由家长陪同执行。" },
+  "phase-plan": { type: "阶段计划", when: "至少有一条已确认异常指标", template: "按去除诱发因素、修复基础功能、补足营养、重建生活方式、复查调整的顺序形成阶段草案；具体周期和干预项目须人工审核。" }
+};
+const definitions = [
+ ["cover","封面",10,"always",[],"prompts/modules/cover.v1.md","cover",1], ["client-letter","致客户说明",20,"always",["patient.name","reports"],"prompts/modules/client-letter.v1.md","letter",1], ["profile-goals","个人信息与核心诉求",30,"any",["patient","symptoms"],"prompts/modules/profile-goals.v1.md","profile",1], ["core-assessment","核心功能评估汇总",40,"confirmed-evidence",["indicators","evidence"],"prompts/modules/core-assessment.v1.md","assessment",3], ["gut-function","消化、吸收与肠道功能",50,"report",["indicators.gi-function","indicators.gut-microbiome"],"prompts/modules/gut-function.v1.md","indicator-cards",3], ["immune-inflammation","防御与修复（免疫与炎症）",60,"immune-related",["symptoms","history","indicators"],"prompts/modules/immune-inflammation.v1.md","assessment",2], ["microbiome","肠道菌群生态",70,"report",["indicators.gut-microbiome"],"prompts/modules/microbiome.v1.md","microbiome",2], ["nutrition-toxic-elements","营养与毒性元素",80,"report",["indicators.nutrient-toxic-elements"],"prompts/modules/nutrition-toxic-elements.v1.md","nutrient",2], ["diet-avoidance","饮食回避",90,"food-related",["foodReactions","indicators.food-intolerance"],"prompts/modules/diet-avoidance.v1.md","food-table",3], ["food-substitution","替代方案",100,"depends-on:diet-avoidance",["diet-avoidance"],"prompts/modules/food-substitution.v1.md","substitution",2], ["meal-plan","一日饮食",110,"diet-context",["patient","diet-avoidance","currentDiet"],"prompts/modules/meal-plan.v1.md","meal-table",2], ["exercise","身体活动",120,"activity-context",["patient","history","exerciseHistory"],"prompts/modules/exercise.v1.md","lifestyle",1], ["hydration","科学饮水",130,"hydration-context",["patient.weightKg","hydrationHistory"],"prompts/modules/hydration.v1.md","lifestyle",1], ["sleep-stress","睡眠与减压",140,"sleep-stress-context",["sleep","stress"],"prompts/modules/sleep-stress.v1.md","lifestyle",1], ["phase-plan","阶段干预",150,"confirmed-modules",["confirmedModules"],"prompts/modules/phase-plan.v1.md","timeline",2], ["follow-up","复查与动态调整",160,"always-review",["doctorPlan","confirmedModules"],"prompts/modules/follow-up.v1.md","follow-up",2], ["closing","最后寄语",170,"always",["patient.name"],"prompts/modules/closing.v1.md","closing",1]
+];
+export const moduleRegistry = definitions.map(([id,title,order,trigger,requiredInputs,promptFile,layout,maxPages]) => ({ id,title,order,trigger,requiredInputs,promptFile,outputSchema:moduleOutputSchema,render:{layout,maxPages},commonRules,reviewStatus:"待审核",legacyRule:legacyRules[id]||null }));
+export const moduleMap = new Map(moduleRegistry.map(module => [module.id,module]));
+export const getModule = id => moduleMap.get(id);
+export const legacySuggestionRules = moduleRegistry.filter(module => module.legacyRule).map(module => ({ id: module.id, module: module.title, ...module.legacyRule, promptFile: module.promptFile, version: "1.0.0" }));

@@ -13,3 +13,5 @@
 .portrait-cover h3{position:absolute;left:11.33%;top:32.77%;font-size:6.3cqw;line-height:1.3;margin:0;color:#00675a}
 .portrait-cover>div{position:absolute;top:59.08%;left:0;width:100%;height:28.62%;padding:8.67cqw 11.33cqw;background:#00675a;color:white;font-size:4.8cqw;box-sizing:border-box}
 .portrait-cover small{display:block;font-size:2.59cqw;margin-top:5cqw}
+.module-review-group{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfdfb}.module-review-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.module-review-head strong{display:block;font-size:14px}.module-review-head small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.module-review-group .suggestion-card{margin-top:8px}
+.module-list{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.module-list span{font-size:10px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#fbfdfb}.module-list span.missing{color:#9a6a2b;background:#fff8e8}
