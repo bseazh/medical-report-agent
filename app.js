@@ -24,7 +24,21 @@ function setFile(file) {
   analyzeButton.disabled = false; showStatus("文件已就绪，可以开始分析"); setIcons();
 }
 async function uploadFiles(files){const projectId=state.activeProjectId;if(!projectId){showStatus("Open or create a project first",true);await openProjects();return}const selected=Array.from(files||[]);if(!selected.length)return;let uploaded=0;for(const file of selected){if(file.size>20*1024*1024){showStatus(`${file.name} exceeds 20 MB`,true);continue}const isPdf=file.name.toLowerCase().endsWith(".pdf");if(!isPdf&&!/^image\/(png|jpeg|jpg)$/.test(file.type)){showStatus(`Unsupported file: ${file.name}`,true);continue}showStatus(`Uploading ${file.name}…`);try{const base64=await toBase64(file);await api(`/api/projects/${projectId}/upload`,{method:"POST",body:JSON.stringify({name:file.name,size:file.size,kind:isPdf?"pdf":"screenshot",base64})});uploaded++;if(isPdf&&!state.file)setFile(file)}catch(error){showStatus(`${file.name} upload failed: ${error.message}`,true)}}await loadProjects();renderFiles();renderUploadedFiles();input.value="";showStatus(uploaded?`${uploaded} file(s) uploaded to the current project`:"No files uploaded",uploaded===0)}
-function showStatus(message, error = false) { status.textContent = message; status.classList.toggle("error", error); }
+function showStatus(message, error = false) {
+  status.textContent = message;
+  status.classList.toggle("error", error);
+  let toast = document.querySelector('#global-status-toast');
+  if (!toast) {
+    toast = document.createElement('div'); toast.id = 'global-status-toast';
+    toast.setAttribute('role', 'status'); toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+  }
+  toast.className = 'global-status-toast ' + (error ? 'error' : 'success');
+  toast.textContent = message;
+  toast.classList.remove('hidden');
+  clearTimeout(showStatus.timer);
+  showStatus.timer = setTimeout(() => toast.classList.add('hidden'), 1800);
+}
 function resetFile() { state.file = null; state.text = ""; input.value = ""; fileRow.classList.add("empty"); $("#file-name").textContent = "尚未选择文件"; $("#file-meta").textContent = "PDF 文件将在此显示"; analyzeButton.disabled = true; showStatus("等待上传报告"); }
 async function extractText(file) {
   const pdfjs = globalThis.pdfjsLib;
@@ -138,7 +152,7 @@ function matrixNotice(message, tone = 'success') {
   notice.classList.remove('hidden');
   notice.textContent = message;
   clearTimeout(matrixNotice.timer);
-  matrixNotice.timer = setTimeout(() => notice.classList.add('hidden'), 3000);
+  matrixNotice.timer = setTimeout(() => notice.classList.add('hidden'), 1800);
 }
 function renderMatrixWorkspace(workspace){const esc=escapeHtml;const cleanFacts=(section)=>{const seen=new Set();return (section.candidateFacts||[]).filter(item=>{const text=readableMatrixText(item.text||'');if(!text||seen.has(text))return false;seen.add(text);return true}).slice(0,6)};const storyText=(section)=>{const facts=cleanFacts(section).map(item=>readableMatrixText(item.text||'')).filter(Boolean);const summary=readableMatrixText(section.summary||section.interpretation||'');return summary||facts.slice(0,4).join('；')};const sections=(workspace?.sections||[]).map((section,index)=>{const facts=cleanFacts(section).map(fact=>'<div class="matrix-candidate"><span>'+esc(fact.title||'病史资料')+'</span><div>'+esc(readableMatrixText(fact.text||''))+'<small>'+esc(fact.sourceType==='manual'?'文字稿':'截图与病例资料')+'</small></div></div>').join('');const summary=section.summary||section.interpretation||'';const storySummary=section.sectionId==='story'?storyText(section):'';return '<details class="matrix-workspace-section" data-kind="'+esc(section.kind||'factor')+'"><summary><div class="matrix-section-summary"><div class="matrix-section-title"><span class="matrix-section-index">'+String(index+1).padStart(2,'0')+'</span><h3>'+esc(section.title)+'</h3></div><div class="matrix-section-meta"><span class="matrix-section-status">'+esc(section.reviewStatus||'待审核')+'</span><i class="matrix-section-chevron" data-lucide="chevron-down"></i></div></div></summary><div class="matrix-section-body">'+(section.sectionId==='story'?(storySummary?'<div class="matrix-story-summary">'+esc(storySummary)+'</div>':'<div class="matrix-empty-fact">暂无已识别内容</div>'):(facts?'<div class="matrix-candidates">'+facts+'</div>':'<div class="matrix-empty-fact">暂无已识别内容</div>'))+'<textarea data-matrix-summary="'+esc(section.sectionId)+'" placeholder="仅在识别不完整时补充一句">'+esc(summary)+'</textarea><div class="matrix-section-footer"><small>来源 '+(section.sources||[]).length+' 个 · 内容 '+cleanFacts(section).length+' 条</small><div><button class="secondary-button" data-matrix-status-action="需补充" data-save-matrix-section="'+esc(section.sectionId)+'" type="button">需补充</button><button class="primary-button" data-matrix-status-action="已确认" data-save-matrix-section="'+esc(section.sectionId)+'" type="button">确认本区</button></div></div></div></details>'}).join('');const sourceFiles=(state.projects.find(x=>x.id===state.activeProjectId)?.files||[]).filter(x=>x.kind==='screenshots');const core={...(workspace?.core||{}),central:'心理、精神、情绪',fields:matrixCoreDefinitions.map(definition=>({...((workspace?.core?.fields||[]).find(field=>field.id===definition.id)||{}),...definition}))};const coreFields=(core.fields||[]).map(field=>'<label class="matrix-core-field" data-core-position="'+esc(field.id)+'"><strong>'+esc(field.title)+'</strong><textarea data-core-field="'+esc(field.id)+'" placeholder="可直接填写，或粘贴文字稿后自动归类">'+esc(field.content||'')+'</textarea><em>'+esc(field.reviewStatus||'待审核')+'</em></label>').join('');$('#matrix-page-content').innerHTML='<div class="matrix-workspace-toolbar"><div><strong>系统先整理，医生只确认</strong><p>默认只显示系统从截图、病例和文字稿整理出的内容；只有识别不完整时才需要补一句。</p></div><span class="source-count">已上传截图 '+sourceFiles.length+' 张</span></div><div class="matrix-text-entry"><textarea id="matrix-text-input" placeholder="可粘贴一段问诊记录或口述稿，系统会自动归类"></textarea><button class="secondary-button" id="matrix-text-generate" type="button"><i data-lucide="file-text"></i>整理文字稿</button></div><section class="matrix-core-panel"><div><span class="matrix-core-kicker">中央功能环 · 七个填写区</span><h3>'+esc(core.central)+'</h3><p>七个填写框已预留，可直接输入并保存；没有资料时留空，之后也可通过文字稿补入。</p><button class="secondary-button" id="save-matrix-core" type="button">保存中央环</button></div><div class="matrix-core-fields"><div class="matrix-core-center"><strong>心理 · 精神 · 情绪</strong><small>核心影响因素</small></div>'+(coreFields||'<span class="matrix-empty-fact">暂无已整理内容</span>')+'</div></section><div class="matrix-workspace-sections">'+(sections||'<p class="project-empty">暂无矩阵分区。</p>')+'</div>';document.querySelector('#save-matrix-core')?.addEventListener('click',async()=>{const next={...core,fields:(core.fields||[]).map(field=>({...field,content:document.querySelector('[data-core-field=\"'+CSS.escape(field.id)+'\"]')?.value||''}))};try{await api('/api/projects/'+state.activeProjectId+'/matrix-workspace',{method:'PUT',body:JSON.stringify({workspace:{core:next}})});matrixNotice('七个填写区已保存，请审核。');await openMatrixPage()}catch(e){matrixNotice('保存失败：'+e.message,'error')}});document.querySelectorAll('[data-save-matrix-section]').forEach(button=>button.addEventListener('click',async()=>{const id=button.dataset.saveMatrixSection;const section=(workspace.sections||[]).find(x=>x.sectionId===id);section.summary=document.querySelector('[data-matrix-summary="'+CSS.escape(id)+'"]')?.value||'';section.interpretation=section.summary;section.reviewStatus=button.dataset.matrixStatusAction||section.reviewStatus;try{await api('/api/projects/'+state.activeProjectId+'/matrix-workspace/sections/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({section})});showStatus(section.reviewStatus==='已确认'?'本区已确认':'已标记为需补充');await openMatrixPage()}catch(e){showStatus('保存失败：'+e.message,true)}}));setIcons()}
 let synthesisSnapshot=null;
@@ -264,5 +278,17 @@ $("#generate-suggestions")?.addEventListener('click',generateSuggestions);$("#ge
 $("#save-suggestions")?.addEventListener('click',()=>saveSuggestions(false));
 $("#confirm-suggestions")?.addEventListener('click',()=>saveSuggestions(true));
 $("#confirm-all-suggestions")?.addEventListener('click',()=>{const checks=document.querySelectorAll('[data-suggestion-check]');if(!checks.length){showStatus('当前没有可确认的建议，请先确认指标并生成建议',true);return}checks.forEach(x=>x.checked=true);showStatus('已选中全部建议，请保存审核');});
+document.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button || button.disabled || button.closest('.modal-header')) return;
+  const label = (button.innerText || button.getAttribute('aria-label') || button.title || '').replace(/\s+/g, ' ').trim();
+  if (!label || !/(生成|分析|识别|整理|保存|确认|导出|下载|刷新|提取|测试|上传|删除|重试|打开|选择|查看|审核)/.test(label)) return;
+  showStatus('已开始' + label.replace(/[：:。…]+$/, '') + '，请稍候…');
+}, true);
+window.addEventListener('unhandledrejection', event => {
+  const message = event.reason?.message || String(event.reason || '操作失败');
+  showStatus(message, true);
+});
+
 document.addEventListener("click",event=>{const source=event.target.closest(".indicator-source"),card=event.target.closest(".indicator-card");if(source&&card&&state.activeProjectId){const file=card.dataset.file,page=card.dataset.page||1;window.open(`/api/projects/${encodeURIComponent(state.activeProjectId)}/files/${encodeURIComponent(file)}/raw#page=${page}`,"_blank","noopener")}});
 document.addEventListener("click",async event=>{const button=event.target.closest(".delete-project");if(!button)return;event.preventDefault();event.stopPropagation();const id=button.dataset.id;if(!(confirm("删除项目及其全部文件、解析结果和导出记录？")&&confirm("请再次确认：此操作不可恢复。")))return;await api(`/api/projects/${id}`,{method:"DELETE"});state.projects=state.projects.filter(p=>p.id!==id);saveProjects();renderProjects();showStatus("项目及其数据已删除")},true);
