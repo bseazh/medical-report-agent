@@ -21,3 +21,23 @@
 .matrix-text-entry{display:grid;grid-template-columns:1fr auto;gap:10px;margin:12px 0 16px}.matrix-text-entry textarea{min-height:58px;border:1px solid #d7e4da;border-radius:10px;padding:10px;font:12px/1.5 'Noto Sans SC',sans-serif;resize:vertical}.matrix-text-entry button{align-self:stretch}@media(max-width:620px){.matrix-text-entry{grid-template-columns:1fr}}
 
 body:not(.matrix-page-active) .workflow-step-2,body:not(.matrix-page-active) .workflow-step-3{display:none!important}
+.matrix-core-panel{display:grid;grid-template-columns:240px 1fr;gap:18px;align-items:center;padding:18px 20px;border:1px solid #ead7af;border-radius:16px;background:linear-gradient(135deg,#fffaf0,#fff)}.matrix-core-kicker{font-size:10px;color:#ad7b2d;letter-spacing:.12em}.matrix-core-panel h3{margin:5px 0;font-size:18px}.matrix-core-panel p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}.matrix-core-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.matrix-core-field{display:grid;gap:5px;padding:10px;border:1px solid #ecdcbf;border-radius:10px;background:#fff}.matrix-core-field strong{font-size:11px;color:#7a5a22}.matrix-core-field textarea{width:100%;min-height:46px;box-sizing:border-box;border:1px solid #e2e8e3;border-radius:7px;padding:7px;background:#fbfdfb;color:#5d6d65;font:10px/1.4 'Noto Sans SC',sans-serif;resize:vertical}.matrix-core-field em{font-style:normal;font-size:9px;color:#a17b42}@media(max-width:800px){.matrix-core-panel{grid-template-columns:1fr}.matrix-core-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.matrix-core-fields{grid-template-columns:1fr}}
+
+.matrix-story-summary{padding:12px 14px;border:1px solid #d7eadf;border-radius:10px;background:#f7fcf8;color:#40594d;font-size:12px;line-height:1.8}
+
+.matrix-core-panel{display:block;padding:24px;background:#f5faf8}
+.matrix-core-panel>div:first-child{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
+.matrix-core-panel p{font-size:13px;flex-basis:100%}
+.matrix-core-fields{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(4,minmax(135px,auto));gap:20px;isolation:isolate}
+.matrix-core-fields:before{content:'';position:absolute;inset:15% 16%;border:3px dashed #9edbb5;border-radius:50%;z-index:-1}
+.matrix-core-field{border:2px solid #5aaed5;padding:12px;min-width:0;border-radius:16px}
+.matrix-core-field strong{font-size:14px;color:#306482}
+.matrix-core-field textarea{min-height:80px;font:14px/1.6 sans-serif;background:white}
+.matrix-core-field em{font-size:11px}
+.matrix-core-center{grid-area:3/2;align-self:center;justify-self:center;aspect-ratio:1;width:100%;max-width:185px;box-sizing:border-box;border:3px solid #e6a438;border-radius:50%;background:#fff8e7;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;color:#805a20;font-size:14px}
+.matrix-core-center small{font-size:12px}
+[data-core-position=integrity]{grid-area:1/2}[data-core-position=assimilation]{grid-area:2/1}[data-core-position=conversion]{grid-area:2/3}[data-core-position=signal]{grid-area:3/1}[data-core-position=defense]{grid-area:3/3}[data-core-position=transport]{grid-area:4/1}[data-core-position=energy]{grid-area:4/3}
+.matrix-notice{position:fixed;right:24px;top:24px;z-index:10000;max-width:360px;padding:16px 20px;border:1px solid #abd5bb;border-left:5px solid #39845a;border-radius:12px;background:#f1fcf5;color:#285b40;box-shadow:0 8px 30px #203e3022;font:14px/1.6 sans-serif;overflow-wrap:anywhere}
+.matrix-notice.pending{background:#eff7ff;border-color:#6eafe0;color:#285c83}.matrix-notice.error{background:#fff5f3;border-color:#dc8d7d;color:#943e32}
+#matrix-text-generate:disabled{opacity:.65;cursor:wait}
+@media(max-width:700px){.matrix-core-fields{grid-template-columns:1fr;grid-template-rows:auto}.matrix-core-fields:before{display:none}.matrix-core-fields>[data-core-position],.matrix-core-center{grid-area:auto}.matrix-core-center{order:-1}.matrix-notice{right:12px;top:12px;max-width:calc(100vw - 64px)}}

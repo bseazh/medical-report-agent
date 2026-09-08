@@ -4,6 +4,8 @@ const labels = {
 
 export function labelFor(key) { return labels[key] || key; }
 
+export function factTitle(key) { return labelFor(key); }
+
 export function humanizeMatrixFact(value) {
   let text = String(value ?? "").trim();
   if (!text) return "";
@@ -23,5 +25,5 @@ export function humanizeMatrixFact(value) {
   } catch {}
   text = text.replace(/^(patient|history|symptoms|allergies|medications|visits|diagnosis|timeline)(?:\.|：|:)?\s*/i, match => `${labelFor(match.replace(/[：:.\s]/g, ""))} `);
   text = text.replace(/(^|[\s；])([A-Za-z_][A-Za-z0-9_-]*)(?=\s|：|:)/g, (_, prefix, key) => `${prefix}${labelFor(key)} `);
-  return text.replace(/[{}\[\]"]+/g, "").replace(/\s+/g, " ").trim();
+  return text.replace(/[{}\[\]"]+/g, "").replace(/\b(patient|history|symptoms|allergies|medications|visits|diagnosis|timeline)\b/gi, match => labelFor(match.toLowerCase())).replace(/\s+/g, " ").trim();
 }

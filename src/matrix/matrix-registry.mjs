@@ -1,5 +1,15 @@
 export const MATRIX_REVIEW_STATUSES = ["待审核", "已确认", "已修改", "需补充", "已排除"];
 
+export const matrixCoreFields = [
+  { id: "assimilation", title: "同化代谢" },
+  { id: "conversion", title: "代谢转化与消除" },
+  { id: "defense", title: "防御与修复" },
+  { id: "energy", title: "能量生成" },
+  { id: "transport", title: "传输系统" },
+  { id: "signal", title: "传递系统" },
+  { id: "integrity", title: "结构完整性" }
+];
+
 export const matrixSections = [
   { id: "story", title: "复述您的故事", kind: "story", questions: ["本次最希望改善的主要问题是什么？", "症状何时开始，最近有什么变化？", "目前最影响生活的表现是什么？"] },
   { id: "antecedents", title: "前置因素（疾病的种子）", kind: "factor", questions: ["家族中是否有过敏、哮喘、湿疹或自身免疫相关疾病？", "既往是否有长期或反复的健康问题？", "出生、成长、既往治疗或长期用药中有哪些重要信息？"] },
@@ -13,9 +23,48 @@ export const matrixSections = [
 ];
 
 export function createMatrixWorkspace() {
-  return { version: "1.0.0", status: "待审核", updatedAt: null, sections: matrixSections.map(section => ({
+  return { version: "1.1.0", status: "待审核", updatedAt: null, core: { central: "心理、精神、情绪", fields: matrixCoreFields.map(field => ({ ...field, content: "", reviewStatus: "待审核", sources: [] })) }, sections: matrixSections.map(section => ({
     sectionId: section.id, title: section.title, kind: section.kind,
     questions: section.questions.map((question, index) => ({ id: `${section.id}-${index + 1}`, question, answer: "", candidateFacts: [], confirmedFacts: [], sources: [], sourceType: "unknown", reviewStatus: "待审核", reviewNote: "" })),
     candidateFacts: [], confirmedFacts: [], interpretation: "", sources: [], reviewStatus: "待审核", reviewNote: ""
   })) };
 }
+
+const sectionFieldMap = {
+  story: ["chiefComplaint", "presentIllness", "symptoms", "history", "timeline"],
+  antecedents: ["familyHistory", "pastHistory", "allergies"],
+  triggers: ["exposures", "foodReactions"],
+  mediators: ["diagnosis", "medications", "symptoms"],
+  "sleep-relaxation": ["sleep"],
+  "exercise-activity": ["exercise", "activity"],
+  "nutrition-water": ["diet", "water", "nutrition"],
+  stress: ["stress"],
+  "social-relationships": ["social", "relationships"]
+};
+
+export function normalizeMatrixWorkspace(input) {
+  const workspace = structuredClone(input || createMatrixWorkspace());
+  workspace.core = workspace.core || { central: "心理、精神、情绪", fields: matrixCoreFields.map(field => ({ ...field, content: "", reviewStatus: "待审核", sources: [] })) };
+  workspace.core.fields = matrixCoreFields.map(field => ({ ...field, ...(workspace.core.fields || []).find(item => item.id === field.id) }));
+  const usedFacts = new Set();
+  for (const section of workspace.sections || []) {
+    const allowed = sectionFieldMap[section.sectionId] || [];
+    const seen = new Set();
+    section.candidateFacts = (section.candidateFacts || []).filter(fact => {
+      const text = String(fact.text || "");
+      const field = fact.field || Object.keys(labelsForField).find(key => new RegExp(key, "i").test(text));
+      const keep = section.sectionId === "story" ? !["name", "gender", "age"].includes(field) : allowed.includes(field);
+      const key = `${field || "unknown"}|${text}`;
+      if (!keep || seen.has(key) || usedFacts.has(text)) return false;
+      seen.add(key);
+      usedFacts.add(text);
+      fact.field = field || fact.field || "history";
+      fact.title = labelsForField[fact.field] || (/[A-Za-z]/.test(String(fact.title || "")) ? "病史资料" : (fact.title || "病史资料"));
+      return true;
+    });
+    section.confirmedFacts = (section.confirmedFacts || []).filter(fact => String(fact.text || "").trim());
+  }
+  return workspace;
+}
+
+const labelsForField = { name: "姓名", gender: "性别", age: "年龄", chiefComplaint: "主要问题", presentIllness: "现病经过", symptoms: "症状表现", history: "病史资料", timeline: "健康时间线", familyHistory: "家族", pastHistory: "既往", allergies: "过敏", exposures: "接触", foodReactions: "食物", diagnosis: "诊断", medications: "用药", sleep: "睡眠", exercise: "运动", activity: "活动", diet: "饮食", water: "饮水", nutrition: "营养", stress: "压力", social: "人际", relationships: "支持" };
