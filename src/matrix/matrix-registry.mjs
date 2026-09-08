@@ -53,7 +53,7 @@ export function normalizeMatrixWorkspace(input) {
     section.candidateFacts = (section.candidateFacts || []).filter(fact => {
       const text = String(fact.text || "");
       const field = fact.field || Object.keys(labelsForField).find(key => new RegExp(key, "i").test(text));
-      const keep = section.sectionId === "story" ? !["name", "gender", "age"].includes(field) : allowed.includes(field);
+      const keep = /截图识别失败/.test(text) ? section.sectionId === "story" : section.sectionId === "story" ? !["name", "gender", "age"].includes(field) : allowed.includes(field);
       const key = `${field || "unknown"}|${text}`;
       if (!keep || seen.has(key) || usedFacts.has(text)) return false;
       seen.add(key);
