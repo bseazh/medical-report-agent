@@ -270,11 +270,10 @@ document.addEventListener('click', async event => {
     await api('/api/projects/'+projectId+'/matrix-workspace',{method:'PUT',body:JSON.stringify({workspace:{core:{central:'心理、精神、情绪',fields}}})});
     const data = await api('/api/projects/'+projectId+'/matrix-workspace/text',{method:'POST',body:JSON.stringify({text})});
     if (state.activeProjectId !== projectId) return matrixNotice('原项目的文字稿已整理，请返回该项目审核。');
-    const drafts = [...document.querySelectorAll('[data-matrix-summary]')].map(element=>[element.dataset.matrixSummary,element.value]);
     renderMatrixWorkspace(data.workspace);
     $('#matrix-text-input').value = text;
-    drafts.forEach(([id,value])=>{if(value)document.querySelector('[data-matrix-summary="'+CSS.escape(id)+'"]').value=value;});
-    matrixNotice(data.filledCoreCount ? '已填入 '+data.filledCoreCount+' 个功能区，请审核；原有内容已保留。' : '整理完成，未新增功能区内容；请审核其他分区，资料不足处保持空白。');
+    const sectionCount = (data.workspace?.sections || []).filter(section => (section.candidateFacts || []).length || section.interpretation || (section.questions || []).some(question => question.answer)).length;
+    matrixNotice('整理完成：已映射 '+(data.filledCoreCount || 0)+' 个中央功能框、'+sectionCount+' 个外围分区，请审核。');
   } catch (error) {
     matrixNotice('整理失败：'+error.message+'。文字稿已保留，可重试。','error');
   } finally {
