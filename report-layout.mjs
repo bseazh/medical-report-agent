@@ -54,7 +54,6 @@ export function buildReportPages(project, evidence = []) {
   }
   section("致您的健康管理说明", [{text:`尊敬的${name}，您好！\n\n本方案依据已审核资料整理，用于沟通与健康管理。饮食、生活方式及阶段计划均保留人工审核结果。\n\n资料中没有确认的内容不作推断；本方案不能替代临床诊断、治疗与专业人员建议。`}]);
   section("核心功能评估汇总", indicators.map(item => ({text:`${item.dimension || "待分类"}｜${item.name}\n检测结果：${item.value ?? "未填写"} ${item.unit || ""}\n参考范围：${item.reference || "未提供"}\n报告状态：${item.status || "待补充判断"}\n来源：${sourcesText([item.source || {}])}`})));
-  section("功能医学举证", evidence.filter(item=>item.reviewStatus==="已确认").map(item=>({text:`${item.dimension || "待分类"}\n${item.claim || ""}\n判断说明：${item.reasoning || "未填写"}\n来源：${sourcesText(item.sources)}`})));
   for (const module of moduleOrder) {
     section(module, suggestions.filter(item => moduleFor(item) === module).map(item => {
       const basis = (item.basis || []).map(entry=>`${entry.name} ${entry.value ?? ""} ${entry.unit || ""}`).join("；");
