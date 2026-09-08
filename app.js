@@ -48,13 +48,44 @@ function analyze(text, file) {
   const guidance = ["预约相关专科，携带原始 PDF 和既往检查结果。", "向医生确认每个异常描述的临床意义、是否需要复查及复查时间。", "如果出现持续胸痛、呼吸困难、意识改变等急症症状，请直接联系急救服务。"];
   return { file: file.name, summary, fields, values, findings, guidance, analyzedAt: new Date().toISOString() };
 }
+function findingPlainText(value) {
+  let text = String(value ?? '');
+  try { const parsed = JSON.parse(text); if (parsed && typeof parsed === 'object') text = String(parsed.text ?? parsed.content ?? parsed.html ?? parsed.table_body ?? text); } catch {}
+  return text.replace(/<\/?[a-z][^>]*>/gi,' ').replace(/&nbsp;/gi,' ').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&amp;/gi,'&').replace(/^\s*["']?(?:text|content|html|table_body)["']?\s*:\s*["']?/i,'').replace(/\s+/g,' ').trim();
+}
+function groupReportFindings(result) {
+  const groups = new Map();
+  for (const finding of result.findings || []) {
+    const detail = String(finding.detail || '');
+    const legacy = detail.match(/来源[：:]\s*(.+?\.pdf)(?:[，,；;]\s*第\s*([^。；;]+?)\s*页)?/i);
+    const file = finding.source?.file || legacy?.[1]?.trim() || (/\.pdf$/i.test(result.file || '') ? result.file : '来源待核对');
+    const page = finding.source?.page ?? legacy?.[2];
+    const title = findingPlainText(finding.title);
+    const content = findingPlainText(detail.replace(/；?来源[：:][\s\S]*$/, ''));
+    if (!groups.has(file)) groups.set(file, {file, items:new Map(), originalCount:0});
+    const group = groups.get(file); group.originalCount++;
+    const key = JSON.stringify([title,content,Boolean(finding.high)]);
+    if (!group.items.has(key)) group.items.set(key,{title,content,high:finding.high,pages:new Set(),count:0});
+    const item = group.items.get(key); item.count++;
+    if (page != null && page !== '') item.pages.add(String(page));
+  }
+  return [...groups.values()];
+}
+function renderReportFindings(result) {
+  const groups = groupReportFindings(result);
+  const count = groups.reduce((sum,group)=>sum+group.items.size,0);
+  $('#abnormal-count').textContent = count + ' 项 · ' + groups.length + ' 份报告';
+  $('#abnormal-list').innerHTML = groups.length ? groups.map(group=>'<details class="report-finding-group"><summary><span><strong>'+escapeHtml(group.file)+'</strong><small>'+group.items.size+' 项需关注'+(group.originalCount>group.items.size?' · 合并 '+(group.originalCount-group.items.size)+' 条重复描述':'')+'</small></span><span class="report-finding-toggle">展开</span></summary><div class="report-finding-items">'+[...group.items.values()].map(item=>'<article class="abnormal '+(item.high?'high':'')+'"><i data-lucide="circle-alert"></i><div><strong>'+escapeHtml(item.title)+'</strong><p>'+escapeHtml(item.content)+'</p><small>来源页码 '+escapeHtml([...item.pages].sort((left,right)=>Number(left)-Number(right)).join('、')||'待核对')+(item.count>1?' · '+item.count+' 处相同描述':'')+'</small></div></article>').join('')+'</div></details>').join('') : '<div class="abnormal">暂无需要关注的描述，请以医生核对原始报告的结果为准。</div>';
+  document.querySelectorAll('.report-finding-group').forEach(group=>group.addEventListener('toggle',()=>{group.querySelector('.report-finding-toggle').textContent=group.open?'收起':'展开';}));
+}
+
 function render(result) {
   state.result = result; $("#result-empty").classList.add("hidden"); $("#result-content").classList.remove("hidden"); $("#result-title").textContent = result.file.replace(/\.pdf$/i, "") + " · 分析结果"; $("#summary").textContent = result.summary;
   $("#field-grid").innerHTML = result.fields.map(f => `<div class="field"><label>${f.label}</label><strong>${escapeHtml(f.value)}</strong></div>`).join("");
-  $("#abnormal-count").textContent = `${result.findings.length} 项`;
-  $("#abnormal-list").innerHTML = result.findings.length ? result.findings.map(f => `<div class="abnormal ${f.high ? "high" : ""}"><i data-lucide="${f.high ? "alert-triangle" : "circle-alert"}"></i><div><strong>${f.title}</strong><p>${escapeHtml(f.detail)}</p></div></div>`).join("") : `<div class="abnormal"><i data-lucide="circle-check"></i><div><strong>未发现明显异常关键词</strong><p>这不代表报告完全正常，请以医生的正式解读为准。</p></div></div>`;
+  renderReportFindings(result);
   $("#guidance-list").innerHTML = result.guidance.map(item => `<li>${escapeHtml(item)}</li>`).join(""); setIcons();
 }
+
 async function enhanceWithAgents(result) {
   const payload = { projectId: state.activeProjectId, fileName: state.file.name, text: state.text, pdfBase64: await toBase64(state.file), config: state.config };
   const response = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -214,4 +245,4 @@ $("#save-suggestions")?.addEventListener('click',()=>saveSuggestions(false));
 $("#confirm-suggestions")?.addEventListener('click',()=>saveSuggestions(true));
 $("#confirm-all-suggestions")?.addEventListener('click',()=>{const checks=document.querySelectorAll('[data-suggestion-check]');if(!checks.length){showStatus('当前没有可确认的建议，请先确认指标并生成建议',true);return}checks.forEach(x=>x.checked=true);showStatus('已选中全部建议，请保存审核');});
 document.addEventListener("click",event=>{const source=event.target.closest(".indicator-source"),card=event.target.closest(".indicator-card");if(source&&card&&state.activeProjectId){const file=card.dataset.file,page=card.dataset.page||1;window.open(`/api/projects/${encodeURIComponent(state.activeProjectId)}/files/${encodeURIComponent(file)}/raw#page=${page}`,"_blank","noopener")}});
-document.addEventListener("click",async event=>{const button=event.target.closest(".delete-project");if(!button)return;event.preventDefault();event.stopPropagation();const id=button.dataset.id;if(!(confirm("删除项目及其全部文件、解析结果和导出记录？")&&confirm("请再次确认：此操作不可恢复。")))return;await api(`/api/projects/${id}`,{method:"DELETE"});state.projects=state.projects.filter(p=>p.id!==id);saveProjects();renderProjects();showStatus("项目及其数据已删除")},true);
+document.addEventListener("click",async event=>{const button=event.target.closest(".delete-project");if(!button)return;event.preventDefault();event.stopPropagation();const id=button.dataset.id;if(!(confirm("删除项目及其全部文件、解析结果和导出记录？")&&confirm("请再次确认：此操作不可恢复。")))return;await api(`/api/projects/${id}`,{method:"DELETE"});state.projects=state.projects.filter(p=>p.id!==id);saveProjects();renderProjects();showStatus("项目及其数据已删除")},true);  renderReportFindings(result);
