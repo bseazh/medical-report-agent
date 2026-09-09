@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 export const PAGE = { width: 7.5, height: 10.8333, font: "Noto Sans CJK SC", green: "00675A", gold: "CA7F42", ink: "303B37" };
-const moduleOrder = ["饮食回避", "替代方案", "一日饮食", "身体活动", "科学饮水", "睡眠与减压", "营养支持", "阶段干预", "其他建议"];
+const moduleOrder = ["饮食回避", "均衡营养", "替代方案", "一日饮食", "能量调节", "神经递质与内分泌", "身体活动", "科学饮水", "睡眠与减压", "营养支持", "阶段干预", "复查与动态调整", "其他建议"];
 
 export function wrapText(value, capacity = 31) {
   const lines = [];
@@ -20,7 +20,7 @@ export function wrapText(value, capacity = 31) {
 function moduleFor(item) {
   if (moduleOrder.includes(item.module)) return item.module;
   if (item.type === "饮食") return /替代/.test(item.title) ? "替代方案" : /每餐|一日/.test(item.title) ? "一日饮食" : "饮食回避";
-  return {运动:"身体活动",饮水:"科学饮水",减压:"睡眠与减压",营养支持:"营养支持",阶段计划:"阶段干预"}[item.type] || "其他建议";
+  return {运动:"身体活动",饮水:"科学饮水",减压:"睡眠与减压",营养支持:"营养支持",营养:"均衡营养",能量:"能量调节", "神经与内分泌":"神经递质与内分泌",阶段计划:"阶段干预",复查:"复查与动态调整"}[item.type] || "其他建议";
 }
 
 function sourcesText(sources = []) {
@@ -29,11 +29,10 @@ function sourcesText(sources = []) {
 
 export function buildReportPages(project, evidence = []) {
   const name = project.caseData?.patient?.name || project.patientName || "患者";
+  const approvedPlan = project.approvedPlan || {};
   const indicators = (project.indicators || []).filter(item => item.reviewStatus === "已确认");
-  const approved = project.approvedPlan?.modules || [];
-  const moduleSuggestions = approved.flatMap(module => (module.suggestions || []).filter(item => item.reviewStatus === "已确认").map(item => ({...item, module: module.moduleTitle || module.title})));
-  const approvedSuggestions = project.approvedPlan?.suggestions || [];
-  const suggestions = (approvedSuggestions.length ? approvedSuggestions : (moduleSuggestions.length ? moduleSuggestions : (project.suggestions?.suggestions || []))).filter(item => item.reviewStatus === "已确认");
+  const approvedSuggestions = approvedPlan.suggestions || [];
+  const suggestions = approvedSuggestions.filter(item => item.reviewStatus === "已确认");
   const pages = [{ kind: "cover", title: "过敏健康改善指导方案", subtitle: name, blocks: [] }];
   function section(title, records) {
     if (!records.length) return;
@@ -61,7 +60,7 @@ export function buildReportPages(project, evidence = []) {
       return {text:`${item.title || module}\n${item.category || "已确认建议"}\n${item.editableContent ?? item.content ?? ""}\n\n触发指标：${basis || "未记录，请复核"}\n来源：${sourcesText(sources) || "未记录，请复核"}`};
     }));
   }
-  section("随访与动态调整", [{text:`干预周期：${project.suggestions?.interventionPeriod || "由专业人员确认"}\n复查周期：${project.suggestions?.reviewPeriod || "由专业人员确认"}\n\n记录执行情况和症状变化，复查后再调整方案；不要自行停药、换药或更改补充剂剂量。`}]);
+  section("随访与动态调整", [{text:`干预周期：${approvedPlan.interventionPeriod || "由专业人员确认"}\n复查周期：${approvedPlan.reviewPeriod || "由专业人员确认"}\n\n记录执行情况和症状变化，复查后再调整方案；不要自行停药、换药或更改补充剂剂量。`}]);
   section("最后寄语", [{text:"每一步改变，都从可执行的小事开始。\n\n与专业人员一起核对方案，结合耐受情况循序渐进，并及时记录反馈。\n\n如出现新症状或症状加重，请及时就医。感谢您的信任。"}]);
   const counts = new Map();
   for (const page of pages) counts.set(page.title, (counts.get(page.title)||0)+1);

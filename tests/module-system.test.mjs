@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { moduleRegistry, legacySuggestionRules } from "../src/modules/module-registry.mjs";
 import { caseSchema, indicatorSchema, moduleOutputSchema, REVIEW_STATUSES, SOURCE_KINDS } from "../src/schemas/case-schema.mjs";
 
-assert.equal(moduleRegistry.length, 17);
+assert.equal(moduleRegistry.length, 20);
 assert.equal(new Set(moduleRegistry.map(x => x.id)).size, moduleRegistry.length);
 assert.deepEqual(moduleRegistry.map(x => x.order), [...moduleRegistry].sort((a,b) => a.order-b.order).map(x => x.order));
 for (const module of moduleRegistry) {
@@ -11,7 +11,8 @@ for (const module of moduleRegistry) {
   assert.ok(module.reviewStatus === "待审核");
   assert.ok(Array.isArray(module.requiredInputs));
 }
-assert.equal(legacySuggestionRules.length, 7);
+assert.equal(legacySuggestionRules.length, 11);
+assert.deepEqual(moduleRegistry.filter(x => x.legacyRule).map(x => x.id), ["diet-avoidance", "food-substitution", "meal-plan", "nutrition-balance", "energy-regulation", "neuro-endocrine", "exercise", "hydration", "sleep-stress", "phase-plan", "follow-up"]);
 assert.deepEqual(REVIEW_STATUSES, ["待审核", "已确认", "已修改", "已排除", "待补充"]);
 assert.deepEqual(SOURCE_KINDS, ["pdf", "screenshot", "manual", "doctor"]);
 for (const schema of [caseSchema, indicatorSchema, moduleOutputSchema]) assert.equal(typeof schema, "object");
